@@ -3,6 +3,9 @@ A shazam clone for music recognition inspired by [Computerphile](https://www.you
 
 # TODO
 - [x] WAV Parsing
-- [x] Parallel Fourier Transform implementation
+- [x] Parallel Discrete Fourier Transform implementation
+- [x] Signature Extraction
+- [ ] Song signature caching
+- [ ] Quick signature lookups
 - [ ] FFT
 - [ ] Expose the API via [Rocket.rs](https://rocket.rs/)
