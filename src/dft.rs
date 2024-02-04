@@ -104,10 +104,16 @@ fn parse_song(file_path: String) -> Option<(f32, Vec<f32>)> {
 	let byte_array = std::fs::read(file_path).ok()?;
 	let channel_count = u16::from_le_bytes([*byte_array.get(22)?, *byte_array.get(23)?]);
 	assert_eq!(channel_count, 1);
+	let data_len = u32::from_le_bytes([
+		*byte_array.get(40)?,
+		*byte_array.get(41)?,
+		*byte_array.get(42)?,
+		*byte_array.get(43)?,
+	]) as usize;
 	Some((
 		u16::from_le_bytes([*byte_array.get(24)?, *byte_array.get(25)?]) as f32,
 		// First 44 bytes are metatdata as per the WAV spec
-		byte_array[44..]
+		byte_array[44..44 + data_len]
 			.array_chunks()
 			.map(|&x| i16::from_le_bytes(x))
 			.map(|x| x as f32 / i16::MAX as f32)
