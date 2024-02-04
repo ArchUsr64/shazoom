@@ -1,3 +1,4 @@
+//! Handles conversion of a WAV file on disk into a vector of Frequency signatures
 use std::fmt::Debug;
 
 use rayon::prelude::*;
@@ -23,15 +24,13 @@ const FUZZ_FACTOR: usize = 0b0;
 /// The n most prominent frequenies of each `FREQ_BUCKET` is stored as a single
 /// byte in the u64 in native endianness
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Signature {
-	pub data: u64,
-}
+pub struct Signature(u64);
 
 impl Debug for Signature {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let mut buffer = "{".to_string();
 		let bucket_size = (MAX_FREQ - MIN_FREQ) / FREQ_BUCKETS_COUNT;
-		self.data
+		self.0
 			.to_ne_bytes()
 			.iter()
 			.enumerate()
@@ -89,9 +88,7 @@ impl Song {
 						acc | (((freq % bucket_size) & !FUZZ_FACTOR) << (bucket_index * 8))
 					})
 			})
-			.map(|signature_data| Signature {
-				data: signature_data as u64,
-			})
+			.map(|signature_data| Signature(signature_data as u64))
 			.collect();
 		Some(Song {
 			signatures,
