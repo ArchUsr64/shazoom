@@ -51,13 +51,12 @@ impl Debug for Signature {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Song {
 	pub signatures: Vec<Signature>,
-	title: String,
 }
 
 impl Song {
 	/// Expects a .wav file name without the extension in the `songs` director
-	pub fn from_name(title: &'static str) -> Option<Song> {
-		let (sample_rate, buffer) = parse_song(format!("songs/{}.wav", title))?;
+	pub fn from_file(file_path: String) -> Option<Song> {
+		let (sample_rate, buffer) = parse_wav(file_path)?;
 		let sample_window_width = sample_rate as usize * SAMPLE_WINDOW_LENGTH_MS / 1000;
 		let sample_window_count = buffer.len() / sample_window_width;
 		let signatures = (0..sample_window_count)
@@ -90,14 +89,11 @@ impl Song {
 			})
 			.map(|signature_data| Signature(signature_data as u64))
 			.collect();
-		Some(Song {
-			signatures,
-			title: title.into(),
-		})
+		Some(Song { signatures })
 	}
 }
 
-fn parse_song(file_path: String) -> Option<(f32, Vec<f32>)> {
+fn parse_wav(file_path: String) -> Option<(f32, Vec<f32>)> {
 	let byte_array = std::fs::read(file_path).ok()?;
 	let channel_count = u16::from_le_bytes([*byte_array.get(22)?, *byte_array.get(23)?]);
 	assert_eq!(channel_count, 1);
