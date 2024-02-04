@@ -22,7 +22,7 @@ const FUZZ_FACTOR: usize = 0b0;
 /// The n most prominent frequenies of each `FREQ_BUCKET` is stored as a single
 /// byte in the u64 in native endianness
 pub struct Signature {
-	data: u64,
+	pub data: u64,
 }
 
 impl Debug for Signature {
@@ -50,7 +50,7 @@ impl Debug for Signature {
 #[derive(Debug)]
 pub struct Song {
 	sample_rate: f32,
-	signatures: Vec<Signature>,
+	pub signatures: Vec<Signature>,
 	title: String,
 }
 
@@ -114,20 +114,20 @@ fn parse_song(file_path: String) -> Option<(f32, Vec<f32>)> {
 }
 
 fn fourier_transform(data: &[f32], sample_rate: f32, test_frequency: f32) -> f32 {
+	let scalar = 2. * PI * test_frequency / sample_rate as f32;
 	use std::f32::consts::PI;
 	let real_part: f32 = data
 		.iter()
 		.enumerate()
-		.map(|(i, sample)| {
-			sample * (i as f32 * test_frequency * 2. * PI / sample_rate as f32).cos()
-		})
+		.map(|(i, sample)| sample * (i as f32 * scalar).cos())
 		.sum();
 	let img_part: f32 = data
 		.iter()
 		.enumerate()
-		.map(|(i, sample)| {
-			sample * (i as f32 * test_frequency * 2. * PI / sample_rate as f32).sin()
-		})
+		.map(|(i, sample)| sample * (i as f32 * scalar).sin())
 		.sum();
-	(real_part.powi(2) + img_part.powi(2)).sqrt() / data.len() as f32
+	// This would be the output of an actual DFT but we can optimize since we
+	// only care about the relative strengths of the frequencies
+	// (real_part.powi(2) + img_part.powi(2)).sqrt() / data.len() as f32
+	real_part.powi(2) + img_part.powi(2)
 }
