@@ -49,7 +49,6 @@ impl Debug for Signature {
 
 #[derive(Debug)]
 pub struct Song {
-	sample_rate: f32,
 	pub signatures: Vec<Signature>,
 	title: String,
 }
@@ -93,7 +92,6 @@ impl Song {
 			})
 			.collect();
 		Some(Song {
-			sample_rate,
 			signatures,
 			title: title.into(),
 		})
@@ -110,8 +108,10 @@ fn parse_song(file_path: String) -> Option<(f32, Vec<f32>)> {
 		*byte_array.get(42)?,
 		*byte_array.get(43)?,
 	]) as usize;
+	let sample_rate = u16::from_le_bytes([*byte_array.get(24)?, *byte_array.get(25)?]);
+	assert_eq!(sample_rate, 44100);
 	Some((
-		u16::from_le_bytes([*byte_array.get(24)?, *byte_array.get(25)?]) as f32,
+		sample_rate as f32,
 		// First 44 bytes are metatdata as per the WAV spec
 		byte_array[44..44 + data_len]
 			.array_chunks()
