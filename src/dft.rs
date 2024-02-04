@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Store signature for every sample window with this time interval
 const SAMPLE_WINDOW_LENGTH_MS: usize = 100;
@@ -21,6 +22,7 @@ const FUZZ_FACTOR: usize = 0b0;
 /// Represents the sound fingerprint of a slice
 /// The n most prominent frequenies of each `FREQ_BUCKET` is stored as a single
 /// byte in the u64 in native endianness
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Signature {
 	pub data: u64,
 }
@@ -47,7 +49,7 @@ impl Debug for Signature {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Song {
 	pub signatures: Vec<Signature>,
 	title: String,
