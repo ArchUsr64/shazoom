@@ -93,27 +93,25 @@ impl Song {
 	}
 }
 
-fn parse_wav(file_path: String) -> Option<(f32, Vec<f32>)> {
-	let byte_array = std::fs::read(file_path).ok()?;
-	let channel_count = u16::from_le_bytes([*byte_array.get(22)?, *byte_array.get(23)?]);
+pub fn parse_wav(file_path: String) -> (f32, Vec<f32>) {
+	let byte_array = std::fs::read(file_path).unwrap();
+	let channel_count = u16::from_le_bytes([byte_array[22], byte_array[23]]);
 	assert_eq!(channel_count, 1);
-	let data_len = u32::from_le_bytes([
-		*byte_array.get(40)?,
-		*byte_array.get(41)?,
-		*byte_array.get(42)?,
-		*byte_array.get(43)?,
-	]) as usize;
-	let sample_rate = u16::from_le_bytes([*byte_array.get(24)?, *byte_array.get(25)?]);
+	let sample_rate = u16::from_le_bytes([byte_array[24], byte_array[25]]);
 	assert_eq!(sample_rate, 44100);
-	Some((
+	let mut data = Vec::new();
+	let mut byte_iter = byte_array.iter();
+	while let Some(&lsb) = byte_iter.next() {
+		if let Some(&msb) = byte_iter.next() {
+			let word_data = i16::from_le_bytes([lsb, msb]);
+			data.push(word_data as f32 / i16::MAX as f32);
+		}
+	}
+	(
 		sample_rate as f32,
 		// First 44 bytes are metatdata as per the WAV spec
-		byte_array[44..44 + data_len]
-			.array_chunks()
-			.map(|&x| i16::from_le_bytes(x))
-			.map(|x| x as f32 / i16::MAX as f32)
-			.collect(),
-	))
+		data,
+	)
 }
 
 pub fn fourier_transform(data: &[f32], sample_rate: f32, test_frequency: f32) -> f32 {
