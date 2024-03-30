@@ -116,7 +116,7 @@ fn parse_wav(file_path: String) -> Option<(f32, Vec<f32>)> {
 	))
 }
 
-fn fourier_transform(data: &[f32], sample_rate: f32, test_frequency: f32) -> f32 {
+pub fn fourier_transform(data: &[f32], sample_rate: f32, test_frequency: f32) -> f32 {
 	let scalar = 2. * PI * test_frequency / sample_rate as f32;
 	use std::f32::consts::PI;
 	let real_part: f32 = data
@@ -129,8 +129,32 @@ fn fourier_transform(data: &[f32], sample_rate: f32, test_frequency: f32) -> f32
 		.enumerate()
 		.map(|(i, sample)| sample * (i as f32 * scalar).sin())
 		.sum();
-	// This would be the output of an actual DFT but we can optimize since we
-	// only care about the relative strengths of the frequencies
-	// (real_part.powi(2) + img_part.powi(2)).sqrt() / data.len() as f32
-	real_part.powi(2) + img_part.powi(2)
+	(real_part.powi(2) + img_part.powi(2)).sqrt() / data.len() as f32
+}
+
+/// Expects a 100ms slice of audio sampled at 44100Hz and returns the 8 most prominent
+/// frequencies in each 100Hz window from 100 to 900Hz
+///
+/// The output frequencies are multiples of 10Hz since the sample is 1/10 of a second
+pub fn fast_fourier_transform(data: &[f32]) -> [usize; 8] {
+	assert_eq!(data.len(), 4410);
+	use easyfft::prelude::*;
+	let frequencies: Vec<_> = data
+		.real_fft()
+		.iter()
+		.map(|i| i.norm())
+		.skip(10)
+		.take(80)
+		.collect();
+	let mut res = [0; 8];
+	for (i, max_freq) in res.iter_mut().enumerate() {
+		*max_freq = (i + 1) * 100
+			+ 10 * frequencies[i * 10..(i + 1) * 10]
+				.iter()
+				.enumerate()
+				.max_by(|(_, &x), (_, y)| x.partial_cmp(y).unwrap())
+				.map(|(i, _)| i)
+				.unwrap();
+	}
+	res
 }
