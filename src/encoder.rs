@@ -1,5 +1,7 @@
 //! Handles conversion of a WAV file on disk into a vector of Frequency signatures
 
+use std::ops::Mul;
+
 use easyfft::prelude::DynRealFft;
 
 #[derive(Debug, Clone)]
@@ -26,12 +28,42 @@ impl Song {
 			samples,
 		}
 	}
+	pub fn length(&self) -> std::time::Duration {
+		std::time::Duration::from_millis((self.samples.len() * 1000 / self.sample_rate) as u64)
+	}
+
+	pub fn amplitude_normalized_constellation_map(
+		&self,
+		slice_size: std::time::Duration,
+		amplitude_normalization_smoothing_factor: u32,
+		max_samples_per_slice: usize,
+		bucket_size: usize,
+		bucket_count: usize,
+	) -> Vec<Vec<usize>> {
+		let amplitudes =
+			self.normalized_amplitude(slice_size.mul(amplitude_normalization_smoothing_factor));
+		let t = self.constellation_map(slice_size, bucket_size, bucket_count);
+		t.iter()
+			.enumerate()
+			.map(|(i, frequencies)| {
+				frequencies
+					.iter()
+					.copied()
+					.take(
+						amplitudes[(i / amplitude_normalization_smoothing_factor as usize)
+							.min(amplitudes.len() - 1)] as usize
+							* max_samples_per_slice / u8::MAX as usize,
+					)
+					.collect()
+			})
+			.collect()
+	}
 
 	/// For each time slice of duration `slice_size`, compute the frequency with the
 	/// highest amplitude for each frequency bucket.
 	///
 	/// The frequency range spans from 0 to `bucket_size` * `bucket_count`
-	pub fn constelation_map(
+	pub fn constellation_map(
 		&self,
 		slice_size: std::time::Duration,
 		bucket_size: usize,
@@ -72,6 +104,25 @@ impl Song {
 					.map(|(freq, _ampl)| *freq)
 					.collect()
 			})
+			.collect()
+	}
+
+	/// Compute normalized amplitude for each of the time slices of duration `slice_size`
+	pub fn normalized_amplitude(&self, slice_size: std::time::Duration) -> Vec<u8> {
+		let sample_window_size = self.sample_rate * slice_size.as_millis() as usize / 1000;
+		let mut max_amplitude = 0f32;
+		let raw_amplitudes: Vec<f32> = self
+			.samples
+			.chunks_exact(sample_window_size)
+			.map(|slice| {
+				let slice_amplitude = slice.iter().map(|i| i.abs()).sum();
+				max_amplitude = max_amplitude.max(slice_amplitude);
+				slice_amplitude
+			})
+			.collect();
+		raw_amplitudes
+			.iter()
+			.map(|amplitude| (amplitude * (u8::MAX as f32) / max_amplitude) as u8)
 			.collect()
 	}
 }
