@@ -59,6 +59,46 @@ impl Song {
 			.collect()
 	}
 
+	pub fn signatures(
+		target_zone_height: usize,
+		// This should be a `std::time::Duration`
+		target_zone_width: usize,
+		constellation_map: Vec<Vec<usize>>,
+	) -> Vec<Vec<((usize, usize), usize)>> {
+		(0..constellation_map.len() - 1)
+			.map(|i| {
+				let slice = &constellation_map[i];
+				let target_slices =
+					&constellation_map[i..constellation_map.len().min(i + target_zone_width)];
+				slice
+					.iter()
+					.copied()
+					.map(move |anchor_freq| {
+						target_slices
+							.iter()
+							.enumerate()
+							.skip(1)
+							.map(move |(time_offset, target_slice)| {
+								target_slice
+									.iter()
+									.copied()
+									.filter(move |target_freq| {
+										(anchor_freq.saturating_sub(target_zone_height / 2)
+											..anchor_freq + target_zone_height / 2)
+											.contains(target_freq)
+									})
+									.map(move |target_freq| {
+										((anchor_freq, target_freq), time_offset)
+									})
+							})
+							.flatten()
+					})
+					.flatten()
+					.collect()
+			})
+			.collect()
+	}
+
 	/// For each time slice of duration `slice_size`, compute the frequency with the
 	/// highest amplitude for each frequency bucket.
 	///
