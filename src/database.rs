@@ -2,15 +2,15 @@
 
 use std::collections::HashMap;
 
-use crate::encoder::{self, Freq, Signature};
+use crate::encoder::{self, Freq, Signature, TimeStamp};
 
 #[derive(Clone, Copy, Debug)]
 pub struct DatabaseConfig {
 	slice_size: std::time::Duration,
 	freq_per_slice: usize,
-	bucket_size: usize,
+	bucket_size: Freq,
 	bucket_count: usize,
-	target_zone_size: (usize, Freq),
+	target_zone_size: (TimeStamp, Freq),
 	fuzz_factor: Freq,
 }
 impl Default for DatabaseConfig {
@@ -70,9 +70,9 @@ impl DatabaseBuilder {
 					.iter()
 					.enumerate()
 					.for_each(|(timestamp, signature)| {
-						signature
-							.iter()
-							.for_each(|&signature| db.add_signature(signature, song_id, timestamp))
+						signature.iter().for_each(|&signature| {
+							db.add_signature(signature, song_id, timestamp as TimeStamp)
+						})
 					})
 			});
 		db
@@ -81,7 +81,7 @@ impl DatabaseBuilder {
 
 #[derive(Debug)]
 pub struct Database {
-	data: HashMap<Signature, Vec<(usize, usize)>>,
+	data: HashMap<Signature, Vec<(usize, TimeStamp)>>,
 	config: DatabaseConfig,
 }
 impl Database {
@@ -91,7 +91,7 @@ impl Database {
 			data: HashMap::new(),
 		}
 	}
-	pub fn add_signature(&mut self, signature: Signature, song_id: usize, timestamp: usize) {
+	pub fn add_signature(&mut self, signature: Signature, song_id: usize, timestamp: TimeStamp) {
 		if let Some(vec) = self.data.get_mut(&signature) {
 			vec.push((song_id, timestamp))
 		} else {
@@ -99,11 +99,11 @@ impl Database {
 		}
 	}
 	#[allow(unused)]
-	pub fn data(&self) -> &HashMap<Signature, Vec<(usize, usize)>> {
+	pub fn data(&self) -> &HashMap<Signature, Vec<(usize, TimeStamp)>> {
 		&self.data
 	}
 	pub fn match_sample(&self, sample: encoder::Song) -> Vec<(usize, usize)> {
-		let mut song_offsets: HashMap<usize, HashMap<isize, usize>> = HashMap::new();
+		let mut song_offsets: HashMap<usize, HashMap<i32, usize>> = HashMap::new();
 		let mut insert_match = |song_id, offset| {
 			if let Some(freq_table) = song_offsets.get_mut(song_id) {
 				if let Some(offset_freq) = freq_table.get_mut(&offset) {
@@ -120,10 +120,7 @@ impl Database {
 				signatures.iter().for_each(|i| {
 					if let Some(matches) = self.data.get(i) {
 						matches.iter().for_each(|(song_id, song_timestamp)| {
-							insert_match(
-								song_id,
-								*song_timestamp as isize - sample_timestamp as isize,
-							)
+							insert_match(song_id, *song_timestamp as i32 - sample_timestamp as i32)
 						})
 					}
 				})

@@ -45,15 +45,15 @@ impl Song {
 
 	pub fn signatures(
 		// This should be a `std::time::Duration`
-		target_zone_width: usize,
+		target_zone_width: TimeStamp,
 		target_zone_height: Freq,
 		constellation_map: Vec<Vec<Freq>>,
 	) -> Vec<Vec<Signature>> {
 		(0..constellation_map.len() - 1)
 			.map(|i| {
 				let slice = &constellation_map[i];
-				let target_slices =
-					&constellation_map[i..constellation_map.len().min(i + target_zone_width)];
+				let target_slices = &constellation_map
+					[i..constellation_map.len().min(i + target_zone_width as usize)];
 				slice
 					.iter()
 					.copied()
@@ -72,7 +72,10 @@ impl Song {
 											.contains(target_freq)
 									})
 									.map(move |target_freq| {
-										Signature((anchor_freq, target_freq), time_offset as u32)
+										Signature(
+											(anchor_freq, target_freq),
+											time_offset as TimeStamp,
+										)
 									})
 							})
 							.flatten()
@@ -91,7 +94,7 @@ impl Song {
 		&self,
 		slice_size: std::time::Duration,
 		freq_per_slice: usize,
-		bucket_size: usize,
+		bucket_size: Freq,
 		bucket_count: usize,
 	) -> Vec<Vec<Freq>> {
 		let sample_window_size = self.sample_rate * slice_size.as_millis() as usize / 1000;
@@ -107,12 +110,12 @@ impl Song {
 					.real_fft()
 					.iter()
 					.map(|i| i.norm())
-					.take(bucket_size * bucket_count)
+					.take(Into::<usize>::into(bucket_size) * bucket_count)
 					.enumerate()
 					.map(|(freq, ampl)| (freq as Freq, ampl))
 					.collect();
 				let mut bucket_frequencies: Vec<_> = freq_amplitudes
-					.chunks_exact(bucket_size)
+					.chunks_exact(bucket_size.into())
 					.map(|freq_bucket| {
 						freq_bucket
 							.iter()
