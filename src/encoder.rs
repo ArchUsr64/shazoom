@@ -2,6 +2,18 @@
 
 use easyfft::prelude::DynRealFft;
 
+pub type Freq = u16;
+pub type TimeStamp = u32;
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub struct Signature((Freq, Freq), TimeStamp);
+
+impl Signature {
+	pub const fn fuzz(self, fuzz_factor: Freq) -> Self {
+		Signature((self.0 .0 & !fuzz_factor, self.0 .1 & !fuzz_factor), self.1)
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct Song {
 	pub sample_rate: usize,
@@ -34,9 +46,9 @@ impl Song {
 	pub fn signatures(
 		// This should be a `std::time::Duration`
 		target_zone_width: usize,
-		target_zone_height: usize,
-		constellation_map: Vec<Vec<usize>>,
-	) -> Vec<Vec<((usize, usize), usize)>> {
+		target_zone_height: Freq,
+		constellation_map: Vec<Vec<Freq>>,
+	) -> Vec<Vec<Signature>> {
 		(0..constellation_map.len() - 1)
 			.map(|i| {
 				let slice = &constellation_map[i];
@@ -60,7 +72,7 @@ impl Song {
 											.contains(target_freq)
 									})
 									.map(move |target_freq| {
-										((anchor_freq, target_freq), time_offset)
+										Signature((anchor_freq, target_freq), time_offset as u32)
 									})
 							})
 							.flatten()
@@ -81,7 +93,7 @@ impl Song {
 		freq_per_slice: usize,
 		bucket_size: usize,
 		bucket_count: usize,
-	) -> Vec<Vec<usize>> {
+	) -> Vec<Vec<Freq>> {
 		let sample_window_size = self.sample_rate * slice_size.as_millis() as usize / 1000;
 		let mut fft_extended_buffer = vec![0f32; self.sample_rate];
 		self.samples
@@ -97,6 +109,7 @@ impl Song {
 					.map(|i| i.norm())
 					.take(bucket_size * bucket_count)
 					.enumerate()
+					.map(|(freq, ampl)| (freq as Freq, ampl))
 					.collect();
 				let mut bucket_frequencies: Vec<_> = freq_amplitudes
 					.chunks_exact(bucket_size)

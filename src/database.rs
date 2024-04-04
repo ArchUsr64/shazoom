@@ -2,14 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::encoder;
-
-const fn fuzz(signature: ((usize, usize), usize), fuzz_factor: usize) -> ((usize, usize), usize) {
-	(
-		(signature.0 .0 & !fuzz_factor, signature.0 .1 & !fuzz_factor),
-		signature.1,
-	)
-}
+use crate::encoder::{self, Freq, Signature};
 
 #[derive(Clone, Copy, Debug)]
 pub struct DatabaseConfig {
@@ -17,8 +10,8 @@ pub struct DatabaseConfig {
 	freq_per_slice: usize,
 	bucket_size: usize,
 	bucket_count: usize,
-	target_zone_size: (usize, usize),
-	fuzz_factor: usize,
+	target_zone_size: (usize, Freq),
+	fuzz_factor: Freq,
 }
 impl Default for DatabaseConfig {
 	fn default() -> Self {
@@ -33,7 +26,7 @@ impl Default for DatabaseConfig {
 	}
 }
 impl DatabaseConfig {
-	pub fn signatures(&self, song: encoder::Song) -> Vec<Vec<((usize, usize), usize)>> {
+	pub fn signatures(&self, song: encoder::Song) -> Vec<Vec<Signature>> {
 		let constellation_map = song.constellation_map(
 			self.slice_size,
 			self.freq_per_slice,
@@ -50,7 +43,7 @@ impl DatabaseConfig {
 			.map(|signatures| {
 				signatures
 					.iter()
-					.map(|&signature| fuzz(signature, self.fuzz_factor))
+					.map(|&signature| signature.fuzz(self.fuzz_factor))
 					.collect()
 			})
 			.collect()
@@ -88,7 +81,7 @@ impl DatabaseBuilder {
 
 #[derive(Debug)]
 pub struct Database {
-	data: HashMap<((usize, usize), usize), Vec<(usize, usize)>>,
+	data: HashMap<Signature, Vec<(usize, usize)>>,
 	config: DatabaseConfig,
 }
 impl Database {
@@ -98,12 +91,7 @@ impl Database {
 			data: HashMap::new(),
 		}
 	}
-	pub fn add_signature(
-		&mut self,
-		signature: ((usize, usize), usize),
-		song_id: usize,
-		timestamp: usize,
-	) {
+	pub fn add_signature(&mut self, signature: Signature, song_id: usize, timestamp: usize) {
 		if let Some(vec) = self.data.get_mut(&signature) {
 			vec.push((song_id, timestamp))
 		} else {
@@ -111,7 +99,7 @@ impl Database {
 		}
 	}
 	#[allow(unused)]
-	pub fn data(&self) -> &HashMap<((usize, usize), usize), Vec<(usize, usize)>> {
+	pub fn data(&self) -> &HashMap<Signature, Vec<(usize, usize)>> {
 		&self.data
 	}
 	pub fn match_sample(&self, sample: encoder::Song) -> Vec<(usize, usize)> {
