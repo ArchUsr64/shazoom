@@ -14,8 +14,7 @@ const fn fuzz(signature: ((usize, usize), usize), fuzz_factor: usize) -> ((usize
 #[derive(Clone, Copy, Debug)]
 pub struct DatabaseConfig {
 	slice_size: std::time::Duration,
-	amplitude_normalization_smoothing_factor: Option<u32>,
-	max_samples_per_slice: usize,
+	freq_per_slice: usize,
 	bucket_size: usize,
 	bucket_count: usize,
 	target_zone_size: (usize, usize),
@@ -25,8 +24,7 @@ impl Default for DatabaseConfig {
 	fn default() -> Self {
 		Self {
 			slice_size: std::time::Duration::from_millis(100),
-			amplitude_normalization_smoothing_factor: Some(10),
-			max_samples_per_slice: 8,
+			freq_per_slice: 16,
 			bucket_size: 100,
 			bucket_count: 16,
 			target_zone_size: (10, 400),
@@ -36,19 +34,12 @@ impl Default for DatabaseConfig {
 }
 impl DatabaseConfig {
 	pub fn signatures(&self, song: encoder::Song) -> Vec<Vec<((usize, usize), usize)>> {
-		let constellation_map = if let Some(amplitude_normalization_smoothing_factor) =
-			self.amplitude_normalization_smoothing_factor
-		{
-			song.amplitude_normalized_constellation_map(
-				self.slice_size,
-				amplitude_normalization_smoothing_factor,
-				self.max_samples_per_slice,
-				self.bucket_size,
-				self.bucket_count,
-			)
-		} else {
-			song.constellation_map(self.slice_size, self.bucket_size, self.bucket_count)
-		};
+		let constellation_map = song.constellation_map(
+			self.slice_size,
+			self.freq_per_slice,
+			self.bucket_size,
+			self.bucket_count,
+		);
 		let signatures = encoder::Song::signatures(
 			self.target_zone_size.0,
 			self.target_zone_size.1,
@@ -68,12 +59,11 @@ impl DatabaseConfig {
 
 #[derive(Default, Debug)]
 pub struct DatabaseBuilder {
-	songs_path: Vec<String>,
+	pub songs_path: Vec<String>,
 }
 impl DatabaseBuilder {
-	pub fn add_song(mut self, file_path: &'static str) -> Self {
+	pub fn add_song(&mut self, file_path: &str) {
 		self.songs_path.push(file_path.into());
-		self
 	}
 	pub fn build(&self, config: DatabaseConfig) -> Database {
 		let mut db = Database::new(config);
