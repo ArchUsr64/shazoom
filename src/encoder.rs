@@ -10,7 +10,7 @@ pub struct Song {
 	pub samples: Vec<f32>,
 }
 impl Song {
-	pub fn from_wav(file_path: String) -> Song {
+	pub fn from_wav(file_path: &String) -> Song {
 		let byte_array = std::fs::read(file_path).unwrap();
 		let channel_count = u16::from_le_bytes([byte_array[22], byte_array[23]]);
 		assert_eq!(channel_count, 1, "Only mono channel files are supported!");
@@ -28,6 +28,7 @@ impl Song {
 			samples,
 		}
 	}
+	#[allow(unused)]
 	pub fn length(&self) -> std::time::Duration {
 		std::time::Duration::from_millis((self.samples.len() * 1000 / self.sample_rate) as u64)
 	}
@@ -60,9 +61,9 @@ impl Song {
 	}
 
 	pub fn signatures(
-		target_zone_height: usize,
 		// This should be a `std::time::Duration`
 		target_zone_width: usize,
+		target_zone_height: usize,
 		constellation_map: Vec<Vec<usize>>,
 	) -> Vec<Vec<((usize, usize), usize)>> {
 		(0..constellation_map.len() - 1)

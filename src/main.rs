@@ -1,11 +1,13 @@
+mod database;
 mod encoder;
 
 fn main() {
-	let song = encoder::Song::from_wav("songs/tvari-hawaii-vacation-159069 (1).mp3.wav".into());
-	let slice_size = std::time::Duration::from_millis(100);
-	let constillation_map = song.amplitude_normalized_constellation_map(slice_size, 10, 8, 100, 16);
-	let signatures = encoder::Song::signatures(400, 10, constillation_map);
-	dbg!(signatures.iter().map(|i| i.len()).sum::<usize>());
-	println!("{}", signatures[signatures.len() / 2].len());
-	println!("{signatures:#?}");
+	let db_config = database::DatabaseConfig::default();
+	let db_builder = database::DatabaseBuilder::default()
+		.add_song("songs/tvari-hawaii-vacation-159069 (1).mp3.wav")
+		.add_song("songs/Katy Perry - Harleys In Hawaii (Official) [sQEgklEwhSo].wav")
+		.add_song("songs/Harleys In Hawaii (KANDY Remix) [JNfk_aQ-owo].wav")
+		.add_song("songs/beyond-the-horizon-136339.mp3.wav");
+	let db = db_builder.build(db_config);
+	dbg!(db.data().len());
 }
