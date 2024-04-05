@@ -71,7 +71,8 @@ impl DatabaseBuilder {
 					.enumerate()
 					.for_each(|(timestamp, signature)| {
 						signature.iter().for_each(|&signature| {
-							db.add_signature(signature, song_id, timestamp as TimeStamp)
+							let vec = db.data.entry(signature).or_insert(Vec::new());
+							vec.push((song_id, timestamp as TimeStamp));
 						})
 					})
 			});
@@ -91,36 +92,21 @@ impl Database {
 			data: HashMap::new(),
 		}
 	}
-	pub fn add_signature(&mut self, signature: Signature, song_id: usize, timestamp: TimeStamp) {
-		if let Some(vec) = self.data.get_mut(&signature) {
-			vec.push((song_id, timestamp))
-		} else {
-			self.data.insert(signature, vec![(song_id, timestamp)]);
-		}
-	}
 	#[allow(unused)]
 	pub fn data(&self) -> &HashMap<Signature, Vec<(usize, TimeStamp)>> {
 		&self.data
 	}
 	pub fn match_sample(&self, sample: encoder::Song) -> Vec<(usize, usize)> {
 		let mut song_offsets: HashMap<usize, HashMap<i32, usize>> = HashMap::new();
-		let mut insert_match = |song_id, offset| {
-			if let Some(freq_table) = song_offsets.get_mut(song_id) {
-				if let Some(offset_freq) = freq_table.get_mut(&offset) {
-					*offset_freq += 1;
-				} else {
-					freq_table.insert(offset, 1);
-				}
-			} else {
-				song_offsets.insert(*song_id, HashMap::from([(offset, 1)]));
-			}
-		};
 		self.config.signatures(sample).iter().enumerate().for_each(
 			|(sample_timestamp, signatures)| {
 				signatures.iter().for_each(|i| {
 					if let Some(matches) = self.data.get(i) {
 						matches.iter().for_each(|(song_id, song_timestamp)| {
-							insert_match(song_id, *song_timestamp as i32 - sample_timestamp as i32)
+							let offset = *song_timestamp as i32 - sample_timestamp as i32;
+							let freq_table = song_offsets.entry(*song_id).or_insert(HashMap::new());
+							let offset_freq = freq_table.entry(offset).or_insert(0);
+							*offset_freq += 1;
 						})
 					}
 				})
