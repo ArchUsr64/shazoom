@@ -1,6 +1,6 @@
 //! Handles management of the song fingerprints
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::encoder::{self, Freq, Signature, TimeStamp};
 
@@ -16,12 +16,12 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
 	fn default() -> Self {
 		Self {
-			slice_size: std::time::Duration::from_millis(100),
-			freq_per_slice: 16,
-			bucket_size: 100,
-			bucket_count: 16,
-			target_zone_size: (10, 400),
-			fuzz_factor: 0b11,
+			slice_size: std::time::Duration::from_millis(50),
+			freq_per_slice: 8,
+			bucket_size: 120,
+			bucket_count: 32,
+			target_zone_size: (5, 600),
+			fuzz_factor: 0b1,
 		}
 	}
 }
@@ -64,6 +64,7 @@ impl DatabaseBuilder {
 			.iter()
 			.enumerate()
 			.for_each(|(song_id, song_path)| {
+				println!("{song_id}");
 				let song = encoder::Song::from_wav(song_path);
 				config
 					.signatures(song)
@@ -82,29 +83,30 @@ impl DatabaseBuilder {
 
 #[derive(Debug)]
 pub struct Database {
-	data: HashMap<Signature, Vec<(usize, TimeStamp)>>,
+	data: FxHashMap<Signature, Vec<(usize, TimeStamp)>>,
 	config: DatabaseConfig,
 }
 impl Database {
 	pub fn new(config: DatabaseConfig) -> Self {
 		Self {
 			config,
-			data: HashMap::new(),
+			data: FxHashMap::default(),
 		}
 	}
 	#[allow(unused)]
-	pub fn data(&self) -> &HashMap<Signature, Vec<(usize, TimeStamp)>> {
+	pub fn data(&self) -> &FxHashMap<Signature, Vec<(usize, TimeStamp)>> {
 		&self.data
 	}
 	pub fn match_sample(&self, sample: encoder::Song) -> Vec<(usize, usize)> {
-		let mut song_offsets: HashMap<usize, HashMap<i32, usize>> = HashMap::new();
+		let mut song_offsets: FxHashMap<usize, FxHashMap<i32, usize>> = FxHashMap::default();
 		self.config.signatures(sample).iter().enumerate().for_each(
 			|(sample_timestamp, signatures)| {
 				signatures.iter().for_each(|i| {
 					if let Some(matches) = self.data.get(i) {
 						matches.iter().for_each(|(song_id, song_timestamp)| {
 							let offset = *song_timestamp as i32 - sample_timestamp as i32;
-							let freq_table = song_offsets.entry(*song_id).or_insert(HashMap::new());
+							let freq_table =
+								song_offsets.entry(*song_id).or_insert(FxHashMap::default());
 							let offset_freq = freq_table.entry(offset).or_insert(0);
 							*offset_freq += 1;
 						})
@@ -119,8 +121,11 @@ impl Database {
 					song_id,
 					offset_freq_table
 						.iter()
-						.map(|i| i.1)
-						.max()
+						.max_by_key(|i| i.1)
+						.map(|i| {
+							println!("Offset: {i:?}");
+							i.1
+						})
 						.copied()
 						.unwrap(),
 				)
