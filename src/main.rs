@@ -73,7 +73,7 @@ fn main() {
 	{
 		let sample_id = sample_id as SongId;
 		let mut matches = db.match_sample(sample);
-		matches.sort_by_key(|i| i.score);
+		matches.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
 		matches.reverse();
 		if matches[0].id == sample_id {
 			info!("Successful Match");
@@ -83,7 +83,7 @@ fn main() {
 		info!("For {}", path);
 		info!("{:?}", &matches[..2.min(matches.len())]);
 		let match_score = matches[0].score;
-		let noise = matches.iter().map(|i| i.score).sum::<usize>() as f32 / match_score as f32;
+		let noise = matches.iter().map(|i| i.score).sum::<f32>() / match_score as f32;
 		cummulative_noise_gm *= noise;
 		cummulative_noise_am += noise;
 		info!("Score: {match_score}, Noise: {}", noise - 1.);

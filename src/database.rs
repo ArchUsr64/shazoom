@@ -105,7 +105,7 @@ impl DatabaseBuilder {
 #[derive(Clone, Copy, Debug)]
 pub struct Match {
 	pub id: SongId,
-	pub score: usize,
+	pub score: f32,
 	pub offset: Offset,
 	pub freq: usize,
 	pub n: usize,
@@ -160,12 +160,12 @@ impl Database {
 					sum += *freq;
 					n += 1;
 				}
-				let average = sum / n;
+				let average = sum as f32 / n as f32;
 				Match {
 					id: song_id,
 					offset: best_offset,
 					freq: max_freq,
-					score: max_freq / average,
+					score: max_freq as f32 / average,
 					n,
 				}
 			})
