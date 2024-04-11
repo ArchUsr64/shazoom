@@ -5,6 +5,8 @@ use rustc_hash::FxHashMap;
 
 use crate::encoder::{self, Freq, Signature, TimeStamp};
 
+pub type SongId = u32;
+
 #[derive(Clone, Copy, Debug)]
 pub struct DatabaseConfig {
 	slice_size: std::time::Duration,
@@ -61,8 +63,8 @@ impl DatabaseBuilder {
 	}
 	pub fn build(&self, config: DatabaseConfig) -> Database {
 		let mut db = Database::new(config);
-		let song_signatures = |song_id| -> Vec<(Signature, (usize, TimeStamp))> {
-			let song = encoder::Song::from_wav(&self.songs_path[song_id]);
+		let song_signatures = |path| -> Vec<(Signature, TimeStamp)> {
+			let song = encoder::Song::from_wav(path);
 			let signatures = config.signatures(&song);
 			// TODO: set an estimated initial capacity
 			let mut res = Vec::new();
@@ -70,19 +72,20 @@ impl DatabaseBuilder {
 				signature
 					.iter()
 					.copied()
-					.for_each(|i| res.push((i, (song_id, timestamp as TimeStamp))))
+					.for_each(|i| res.push((i, timestamp as TimeStamp)))
 			});
 			res
 		};
-		let data: Vec<Vec<(Signature, (usize, TimeStamp))>> = self
+		let data: Vec<Vec<(Signature, TimeStamp)>> = self
 			.songs_path
 			.par_iter()
-			.enumerate()
-			.map(|(i, _path)| song_signatures(i))
+			.map(|path| song_signatures(path))
 			.collect();
-		for (signature, value) in data.iter().map(|i| i.iter()).flatten() {
-			let vec = db.data.entry(*signature).or_insert(Vec::new());
-			vec.push(*value);
+		for (song_id, data) in data.iter().enumerate() {
+			data.iter().copied().for_each(|(signature, timestamp)| {
+				let vec = db.data.entry(signature).or_insert(Vec::new());
+				vec.push((song_id as SongId, timestamp));
+			})
 		}
 		db
 	}
@@ -90,7 +93,7 @@ impl DatabaseBuilder {
 
 #[derive(Debug)]
 pub struct Database {
-	data: FxHashMap<Signature, Vec<(usize, TimeStamp)>>,
+	data: FxHashMap<Signature, Vec<(SongId, TimeStamp)>>,
 	config: DatabaseConfig,
 }
 impl Database {
@@ -101,11 +104,11 @@ impl Database {
 		}
 	}
 	#[allow(unused)]
-	pub fn data(&self) -> &FxHashMap<Signature, Vec<(usize, TimeStamp)>> {
+	pub fn data(&self) -> &FxHashMap<Signature, Vec<(SongId, TimeStamp)>> {
 		&self.data
 	}
-	pub fn match_sample(&self, sample: encoder::Song) -> Vec<(usize, usize)> {
-		let mut song_offsets: FxHashMap<usize, FxHashMap<i32, usize>> = FxHashMap::default();
+	pub fn match_sample(&self, sample: encoder::Song) -> Vec<(SongId, usize)> {
+		let mut song_offsets: FxHashMap<SongId, FxHashMap<i32, usize>> = FxHashMap::default();
 		self.config
 			.signatures(&sample)
 			.enumerate()
