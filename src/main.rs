@@ -1,15 +1,37 @@
 #![feature(stmt_expr_attributes)]
 
-use log::{error, info};
+use clap::Parser;
+use log::{debug, error, info};
 
-use crate::database::SongId;
 mod database;
 mod encoder;
+
+use crate::database::SongId;
+use crate::encoder::{Freq, TimeStamp};
+
+#[derive(Parser)]
+pub struct Args {
+	#[arg(short, long, default_value_t = 50)]
+	pub ms_timeslice_size: u64,
+	#[arg(short, long, default_value_t = 8)]
+	pub freq_per_slice: usize,
+	#[arg(short, long, default_value_t = 120)]
+	pub size_bucket: Freq,
+	#[arg(short, long, default_value_t = 32)]
+	pub count_bucket: usize,
+	#[arg(short, long, default_value_t = 5)]
+	pub width_target_zone: TimeStamp,
+	#[arg(short, long, default_value_t = 600)]
+	pub target_zone_height: Freq,
+	#[arg(long, default_value_t = 0b1)]
+	pub fuzz_factor: Freq,
+}
 
 fn main() {
 	env_logger::init();
 	let start = std::time::Instant::now();
-	let db_config = database::DatabaseConfig::default();
+	let db_config = database::DatabaseConfig::from_args(Args::parse());
+	debug!("{db_config:?}");
 	let mut db_builder = database::DatabaseBuilder::default();
 
 	#[rustfmt::skip]

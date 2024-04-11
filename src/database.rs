@@ -1,5 +1,6 @@
 //! Handles management of the song fingerprints
 
+use crate::Args;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
@@ -16,18 +17,6 @@ pub struct DatabaseConfig {
 	bucket_count: usize,
 	target_zone_size: (TimeStamp, Freq),
 	fuzz_factor: Freq,
-}
-impl Default for DatabaseConfig {
-	fn default() -> Self {
-		Self {
-			slice_size: std::time::Duration::from_millis(50),
-			freq_per_slice: 8,
-			bucket_size: 120,
-			bucket_count: 32,
-			target_zone_size: (5, 600),
-			fuzz_factor: 0b1,
-		}
-	}
 }
 impl DatabaseConfig {
 	pub fn signatures<'a>(
@@ -51,6 +40,26 @@ impl DatabaseConfig {
 				.map(|&signature| signature.fuzz(self.fuzz_factor))
 				.collect()
 		})
+	}
+	pub fn from_args(
+		Args {
+			ms_timeslice_size: slice_size_ms,
+			freq_per_slice,
+			size_bucket: bucket_size,
+			count_bucket: bucket_count,
+			width_target_zone: target_zone_size_width,
+			target_zone_height: target_zone_size_height,
+			fuzz_factor,
+		}: Args,
+	) -> Self {
+		Self {
+			slice_size: std::time::Duration::from_millis(slice_size_ms),
+			freq_per_slice,
+			bucket_size,
+			bucket_count,
+			target_zone_size: (target_zone_size_width, target_zone_size_height),
+			fuzz_factor,
+		}
 	}
 }
 
