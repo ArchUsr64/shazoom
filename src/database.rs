@@ -6,6 +6,7 @@ use rustc_hash::FxHashMap;
 use crate::encoder::{self, Freq, Signature, TimeStamp};
 
 pub type SongId = u32;
+pub type Offset = i32;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DatabaseConfig {
@@ -91,6 +92,13 @@ impl DatabaseBuilder {
 	}
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Match {
+	pub id: SongId,
+	pub freq: usize,
+	pub offset: Offset,
+}
+
 #[derive(Debug)]
 pub struct Database {
 	data: FxHashMap<Signature, Vec<(SongId, TimeStamp)>>,
@@ -107,8 +115,8 @@ impl Database {
 	pub fn data(&self) -> &FxHashMap<Signature, Vec<(SongId, TimeStamp)>> {
 		&self.data
 	}
-	pub fn match_sample(&self, sample: encoder::Song) -> Vec<(SongId, usize)> {
-		let mut song_offsets: FxHashMap<SongId, FxHashMap<i32, usize>> = FxHashMap::default();
+	pub fn match_sample(&self, sample: encoder::Song) -> Vec<Match> {
+		let mut song_offsets: FxHashMap<SongId, FxHashMap<Offset, usize>> = FxHashMap::default();
 		self.config
 			.signatures(&sample)
 			.enumerate()
@@ -116,7 +124,7 @@ impl Database {
 				signatures.iter().for_each(|i| {
 					if let Some(matches) = self.data.get(i) {
 						matches.iter().for_each(|(song_id, song_timestamp)| {
-							let offset = *song_timestamp as i32 - sample_timestamp as i32;
+							let offset = *song_timestamp as Offset - sample_timestamp as Offset;
 							let freq_table =
 								song_offsets.entry(*song_id).or_insert(FxHashMap::default());
 							let offset_freq = freq_table.entry(offset).or_insert(0);
@@ -132,12 +140,12 @@ impl Database {
 					song_id,
 					offset_freq_table
 						.iter()
-						.max_by_key(|i| i.1)
-						.map(|i| i.1)
-						.copied()
+						.map(|i| (*i.0, *i.1))
+						.max_by_key(|(_, freq)| *freq)
 						.unwrap(),
 				)
 			})
+			.map(|(id, (offset, freq))| Match { id, offset, freq })
 			.collect()
 	}
 }
