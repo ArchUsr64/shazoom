@@ -92,11 +92,14 @@ impl DatabaseBuilder {
 	}
 }
 
+#[allow(unused)]
 #[derive(Clone, Copy, Debug)]
 pub struct Match {
 	pub id: SongId,
-	pub freq: usize,
+	pub score: usize,
 	pub offset: Offset,
+	pub freq: usize,
+	pub n: usize,
 }
 
 #[derive(Debug)]
@@ -136,16 +139,27 @@ impl Database {
 		song_offsets
 			.iter()
 			.map(|(&song_id, offset_freq_table)| {
-				(
-					song_id,
-					offset_freq_table
-						.iter()
-						.map(|i| (*i.0, *i.1))
-						.max_by_key(|(_, freq)| *freq)
-						.unwrap(),
-				)
+				let mut sum = 0;
+				let mut max_freq = usize::MIN;
+				let mut best_offset = 0;
+				let mut n = 0;
+				for (offset, freq) in offset_freq_table.iter() {
+					if *freq > max_freq {
+						max_freq = *freq;
+						best_offset = *offset;
+					}
+					sum += *freq;
+					n += 1;
+				}
+				let average = sum / n;
+				Match {
+					id: song_id,
+					offset: best_offset,
+					freq: max_freq,
+					score: max_freq / average,
+					n,
+				}
 			})
-			.map(|(id, (offset, freq))| Match { id, offset, freq })
 			.collect()
 	}
 }
