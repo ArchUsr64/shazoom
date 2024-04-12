@@ -1,12 +1,13 @@
 #![feature(stmt_expr_attributes)]
 
+use std::io::Write;
+
 use clap::Parser;
 use log::{debug, error, info};
 
 mod database;
 mod encoder;
 
-use crate::database::SongId;
 use crate::encoder::{Freq, TimeStamp};
 
 #[derive(Parser)]
@@ -48,48 +49,25 @@ fn main() {
 
 	let db = db_builder.build(db_config);
 	info!("DB Build Took {:?}", start.elapsed());
-	let start = std::time::Instant::now();
-	let samples = [
-		"samples/Attention.ogg.wav",
-		"samples/CheapThrills.ogg.wav",
-		"samples/Closer.ogg.wav",
-		"samples/Faded.ogg.wav",
-		"samples/HymmForTheWeekend.ogg.wav",
-		"samples/NewRules.ogg.wav",
-		"samples/NotAfraid.ogg.wav",
-		"samples/Starboy.ogg.wav",
-		"samples/TakiTaki.ogg.wav",
-		"samples/Timber.ogg.wav",
-	];
 
-	let mut cummulative_noise_gm = 1f32;
-	let mut cummulative_noise_am = 0f32;
-	for (sample_id, (path, sample)) in samples
-		.iter()
-		.map(|i| (i, encoder::Song::from_wav(&i.to_string())))
-		.enumerate()
-	{
-		let sample_id = sample_id as SongId;
-		let mut matches = db.match_sample(sample);
-		matches.sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
-		matches.reverse();
-		if matches[0].id == sample_id {
-			info!("Successful Match");
+	loop {
+		let mut input_sample_path = String::new();
+		print!("Enter file path: ");
+		std::io::stdout().flush().unwrap();
+		std::io::stdin().read_line(&mut input_sample_path).unwrap();
+		let start = std::time::Instant::now();
+		if let Some(sample) = encoder::Song::from_wav(&input_sample_path.trim().to_string()) {
+			let mut matches = db.match_sample(sample);
+			info!("Match Count: {}, in {:?}", matches.len(), start.elapsed());
+			matches.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+			for res in &matches[..3.min(matches.len())] {
+				info!(
+					"Song: {}, Score: {:.2}",
+					db_builder.songs_path[res.id as usize], res.score
+				)
+			}
 		} else {
-			error!("Match failed");
+			error!("Invalid file name, try again");
 		}
-		info!("For {}", path);
-		info!("{:?}", &matches[..2.min(matches.len())]);
-		let match_score = matches[0].score;
-		let noise = matches.iter().map(|i| i.score).sum::<f32>() / match_score as f32;
-		cummulative_noise_gm *= noise;
-		cummulative_noise_am += noise;
-		info!("Score: {match_score}, Noise: {}", noise - 1.);
 	}
-
-	cummulative_noise_gm = cummulative_noise_gm.powf((samples.len() as f32).recip());
-	cummulative_noise_am = cummulative_noise_am / samples.len() as f32;
-	info!("Cum Noise GM: {}", cummulative_noise_gm);
-	info!("Cum Noise AM: {}", cummulative_noise_am);
-	info!("Matching Took {:#?}", start.elapsed());
 }
