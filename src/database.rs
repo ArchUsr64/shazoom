@@ -65,7 +65,7 @@ impl DatabaseBuilder {
 	pub fn build(&self, config: DatabaseConfig) -> Database {
 		let mut db = Database::new(config);
 		let song_signatures = |path| -> Vec<(Signature, TimeStamp)> {
-			let song = encoder::Song::from_wav(path);
+			let song = encoder::Song::from_wav(path).unwrap();
 			let signatures = config.signatures(&song);
 			// TODO: set an estimated initial capacity
 			let mut res = Vec::new();
