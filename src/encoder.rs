@@ -10,12 +10,6 @@ pub type TimeStamp = u32;
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Signature((Freq, Freq), TimeStamp);
 
-impl Signature {
-	pub const fn fuzz(self, fuzz_factor: Freq) -> Self {
-		Signature((self.0 .0 & !fuzz_factor, self.0 .1 & !fuzz_factor), self.1)
-	}
-}
-
 #[derive(Debug, Clone)]
 pub struct Song {
 	pub sample_rate: usize,

@@ -16,7 +16,6 @@ pub struct DatabaseConfig {
 	bucket_size: Freq,
 	bucket_count: usize,
 	target_zone_size: (TimeStamp, Freq),
-	fuzz_factor: Freq,
 }
 impl DatabaseConfig {
 	pub fn signatures<'a>(
@@ -29,17 +28,11 @@ impl DatabaseConfig {
 			self.bucket_size,
 			self.bucket_count,
 		);
-		let signatures = encoder::Song::signatures(
+		encoder::Song::signatures(
 			self.target_zone_size.0,
 			self.target_zone_size.1,
 			constellation_map,
-		);
-		signatures.map(|signatures| {
-			signatures
-				.iter()
-				.map(|&signature| signature.fuzz(self.fuzz_factor))
-				.collect()
-		})
+		)
 	}
 	pub fn from_args(
 		Args {
@@ -49,7 +42,6 @@ impl DatabaseConfig {
 			count_bucket: bucket_count,
 			width_target_zone: target_zone_size_width,
 			target_zone_height: target_zone_size_height,
-			fuzz_factor,
 		}: Args,
 	) -> Self {
 		Self {
@@ -58,7 +50,6 @@ impl DatabaseConfig {
 			bucket_size,
 			bucket_count,
 			target_zone_size: (target_zone_size_width, target_zone_size_height),
-			fuzz_factor,
 		}
 	}
 }

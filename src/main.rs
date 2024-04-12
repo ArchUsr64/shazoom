@@ -23,8 +23,6 @@ pub struct Args {
 	pub width_target_zone: TimeStamp,
 	#[arg(short, long, default_value_t = 600)]
 	pub target_zone_height: Freq,
-	#[arg(long, default_value_t = 0b1)]
-	pub fuzz_factor: Freq,
 }
 
 fn main() {
