@@ -1,17 +1,23 @@
 //! Handles management of the song fingerprints
 
-use std::ffi::OsString;
+use std::{
+	ffi::OsString,
+	hash::{DefaultHasher, Hash, Hasher},
+	path::PathBuf,
+};
 
 use crate::Args;
+use log::{error, info, warn};
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::encoder::{self, Freq, Signature, TimeStamp};
 
 pub type SongId = u32;
 pub type Offset = i32;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, Serialize)]
 pub struct DatabaseConfig {
 	slice_size: std::time::Duration,
 	freq_per_slice: usize,
@@ -20,6 +26,11 @@ pub struct DatabaseConfig {
 	target_zone_size: (TimeStamp, Freq),
 }
 impl DatabaseConfig {
+	fn cached_dir_name(&self) -> OsString {
+		let mut hasher = DefaultHasher::new();
+		self.hash(&mut hasher);
+		format!("{:016x}", hasher.finish()).into()
+	}
 	pub fn signatures<'a>(
 		&'a self,
 		song: &'a encoder::Song,
@@ -47,6 +58,7 @@ impl DatabaseConfig {
 			..
 		}: Args,
 	) -> Self {
+		// TODO: input validation, like `assert!(freq_per_slice >= bucket_count)`
 		Self {
 			slice_size: std::time::Duration::from_millis(slice_size_ms),
 			freq_per_slice,
@@ -57,23 +69,131 @@ impl DatabaseConfig {
 	}
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug, Hash)]
+pub struct SongEntry {
+	pub path: OsString,
+	pub data: Vec<u8>,
+}
+impl SongEntry {
+	fn cached_file_name(&self) -> OsString {
+		let mut hasher = DefaultHasher::new();
+		self.hash(&mut hasher);
+		format!("{}-{:016x}.json", self.path.display(), hasher.finish()).into()
+	}
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SongData(Vec<(Signature, TimeStamp)>);
+
+#[derive(Debug)]
+pub enum BuilderEntry {
+	CachedData(OsString, SongData),
+	Entry(SongEntry),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum CacheStatus {
+	Hit,
+	Miss,
+}
+
+#[derive(Debug)]
 pub struct DatabaseBuilder {
-	pub songs_path: Vec<OsString>,
-	pub songs_data: Vec<Vec<u8>>,
+	data: Vec<BuilderEntry>,
+	config: DatabaseConfig,
+	songs_dir: PathBuf,
+	cache_dir: Option<PathBuf>,
 }
 impl DatabaseBuilder {
+	pub fn new<T: Into<PathBuf> + std::fmt::Debug + Copy>(
+		config: DatabaseConfig,
+		songs_dir: T,
+		cache_dir: Option<T>,
+	) -> Self {
+		let mut cache_dir_path = match cache_dir {
+			None => {
+				return Self {
+					data: Vec::new(),
+					config,
+					songs_dir: songs_dir.into(),
+					cache_dir: None,
+				}
+			}
+			Some(x) => PathBuf::from(x.into()),
+		};
+		let cache_dir = {
+			let db_cache_dir_name = &config.cached_dir_name();
+			match std::fs::read_dir(&cache_dir_path) {
+				Ok(mut cache_dir) => cache_dir
+					.find_map(move |i| {
+						i.ok()
+							.filter(|i| i.file_name() == *db_cache_dir_name)
+							.map(|i| i.path())
+							.filter(|i| i.is_dir())
+					})
+					.or_else(|| {
+						cache_dir_path.push(db_cache_dir_name);
+						std::fs::create_dir(&cache_dir_path)
+							.inspect_err(|err| {
+								error!(
+									"Failed to create db cache directory at {:?}, {err:?}",
+									&cache_dir_path
+								)
+							})
+							.map(|_| cache_dir_path.clone())
+							.ok()
+					}),
+				Err(err) => {
+					error!(
+						"Failed to read cache directory {:?}, {err:?}",
+						&cache_dir_path
+					);
+					None
+				}
+			}
+		};
+		if cache_dir.is_none() {
+			warn!("Cache directory for specified {config:?} not found");
+		}
+		Self {
+			data: Vec::new(),
+			config,
+			songs_dir: songs_dir.into(),
+			cache_dir,
+		}
+	}
 	pub fn add_song<T: Into<OsString> + Copy + std::fmt::Debug>(
 		&mut self,
 		file_path: T,
-	) -> Result<(), std::io::Error> {
-		self.songs_data.push(std::fs::read(file_path.into())?);
-		self.songs_path.push(file_path.clone().into());
-		Ok(())
+	) -> Result<CacheStatus, std::io::Error> {
+		let mut path = self.songs_dir.clone();
+		path.push(file_path.into());
+		let entry = SongEntry {
+			path: file_path.clone().into(),
+			data: std::fs::read(path)?,
+		};
+		if let Some(mut cached_file) = self.cache_dir.clone() {
+			cached_file.push(entry.cached_file_name());
+			match std::fs::read(cached_file) {
+				Ok(cached_data) => match serde_json::from_slice(&cached_data) {
+					Ok(x) => {
+						self.data
+							.push(BuilderEntry::CachedData(file_path.into(), x));
+						return Ok(CacheStatus::Hit);
+					}
+					Err(err) => {
+						warn!("Failed to deserialize cache file for {file_path:?}, {err:?}")
+					}
+				},
+				Err(err) => warn!("Failed to read cache file for {file_path:?}, {err:?}"),
+			}
+		}
+		self.data.push(BuilderEntry::Entry(entry));
+		Ok(CacheStatus::Miss)
 	}
-	pub fn build(&self, config: DatabaseConfig) -> Database {
+	pub fn build(self, config: DatabaseConfig) -> Database {
 		let mut db = Database::new(config);
-		let song_signatures = |byte_array| -> Vec<(Signature, TimeStamp)> {
+		let song_signatures = |byte_array| -> SongData {
 			let song = encoder::Song::from_wav(byte_array);
 			let signatures = config.signatures(&song);
 			// TODO: set an estimated initial capacity
@@ -84,18 +204,35 @@ impl DatabaseBuilder {
 					.copied()
 					.for_each(|i| res.push((i, timestamp as TimeStamp)))
 			});
-			res
+			SongData(res)
 		};
-		let data: Vec<Vec<(Signature, TimeStamp)>> = self
-			.songs_path
+		if let Some(mut path) = self.cache_dir.clone() {
+			path.push("config.json");
+			std::fs::write(path, serde_json::to_string(&self.config).unwrap()).unwrap();
+		}
+		let data: Vec<(OsString, SongData)> = self
+			.data
 			.par_iter()
-			.map(|path| song_signatures(std::fs::read(path).unwrap()))
+			.map(|entry| match entry {
+				// TODO: cloning big chunks of data
+				BuilderEntry::CachedData(path, data) => (path.clone(), data.clone()),
+				BuilderEntry::Entry(entry) => {
+					let data = song_signatures(entry.data.clone());
+					if let Some(mut path) = self.cache_dir.clone() {
+						path.push(&entry.cached_file_name());
+						std::fs::write(&path, serde_json::to_string(&data).unwrap()).unwrap();
+						info!("Wrote data for {path:?} to Cache");
+					}
+					(entry.path.clone(), data)
+				}
+			})
 			.collect();
-		for (song_id, data) in data.iter().enumerate() {
+		for (path, SongData(data)) in data {
 			data.iter().copied().for_each(|(signature, timestamp)| {
 				let vec = db.data.entry(signature).or_insert(Vec::new());
-				vec.push((song_id as SongId, timestamp));
-			})
+				vec.push((db.song_paths.len() as SongId, timestamp));
+			});
+			db.song_paths.push(path);
 		}
 		db
 	}
@@ -115,12 +252,17 @@ pub struct Match {
 pub struct Database {
 	data: FxHashMap<Signature, Vec<(SongId, TimeStamp)>>,
 	config: DatabaseConfig,
+	song_paths: Vec<OsString>,
 }
 impl Database {
+	pub fn song_name(&self, id: SongId) -> String {
+		self.song_paths[id as usize].clone().into_string().unwrap()
+	}
 	pub fn new(config: DatabaseConfig) -> Self {
 		Self {
 			config,
 			data: FxHashMap::default(),
+			song_paths: Vec::new(),
 		}
 	}
 	#[allow(unused)]

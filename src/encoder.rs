@@ -3,11 +3,12 @@
 use std::hash::Hash;
 
 use easyfft::prelude::*;
+use serde::{Deserialize, Serialize};
 
 pub type Freq = u16;
 pub type TimeStamp = u32;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Signature((Freq, Freq), TimeStamp);
 
 #[derive(Debug, Clone)]

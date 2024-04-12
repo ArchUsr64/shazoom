@@ -1,4 +1,4 @@
-#![feature(stmt_expr_attributes)]
+#![feature(stmt_expr_attributes, let_chains, os_str_display)]
 
 use std::io::Write;
 
@@ -26,6 +26,8 @@ pub struct Args {
 	pub target_zone_height: Freq,
 	#[arg(long, default_value_t = String::from("songs"))]
 	pub songs_dir: String,
+	#[arg(long, default_value_t = String::from("cache"))]
+	pub cache_dir: String,
 }
 
 fn main() {
@@ -33,7 +35,8 @@ fn main() {
 	let args = Args::parse();
 	let db_config = database::DatabaseConfig::from_args(args.clone());
 	debug!("{db_config:?}");
-	let mut db_builder = database::DatabaseBuilder::default();
+	let mut db_builder =
+		database::DatabaseBuilder::new(db_config, &args.songs_dir, Some(&args.cache_dir));
 
 	let entries = match std::fs::read_dir(&args.songs_dir) {
 		Ok(x) => x,
@@ -42,13 +45,16 @@ fn main() {
 			panic!("{err:?}")
 		}
 	};
+
 	for dir_entry in entries {
 		match dir_entry {
-			Ok(file) => {
-				if let Err(err) = db_builder.add_song(&file.path()) {
-					error!("Failed to add {file:?} to the database, {err:?}");
-				}
+			Ok(x) if !x.path().is_file() => {
+				debug!("Skipping {x:?}");
 			}
+			Ok(file) => match db_builder.add_song(&file.file_name()) {
+				Ok(cache) => info!("{cache:?} for {file:?}"),
+				Err(err) => error!("Failed to add {file:?} to the database, {err:?}"),
+			},
 			Err(err) => error!("{err}"),
 		}
 	}
@@ -72,7 +78,8 @@ fn main() {
 				if let Some(best_match) = matches.first() {
 					info!(
 						"Best Match: {:?}, Score: {:.2}",
-						db_builder.songs_path[best_match.id as usize], best_match.score
+						db.song_name(best_match.id),
+						best_match.score
 					);
 					for (i, m) in matches.iter().enumerate() {
 						debug!("{i}: Match: {m:?}");
