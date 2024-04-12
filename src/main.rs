@@ -11,17 +11,17 @@ use crate::encoder::{Freq, TimeStamp};
 
 #[derive(Parser)]
 pub struct Args {
-	#[arg(short, long, default_value_t = 50)]
+	#[arg(short, long, default_value_t = 260)]
 	pub ms_timeslice_size: u64,
 	#[arg(short, long, default_value_t = 8)]
 	pub freq_per_slice: usize,
-	#[arg(short, long, default_value_t = 120)]
+	#[arg(short, long, default_value_t = 180)]
 	pub size_bucket: Freq,
-	#[arg(short, long, default_value_t = 32)]
+	#[arg(short, long, default_value_t = 20)]
 	pub count_bucket: usize,
-	#[arg(short, long, default_value_t = 5)]
+	#[arg(short, long, default_value_t = 10)]
 	pub width_target_zone: TimeStamp,
-	#[arg(short, long, default_value_t = 600)]
+	#[arg(short, long, default_value_t = 900)]
 	pub target_zone_height: Freq,
 }
 
