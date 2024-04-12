@@ -1,5 +1,7 @@
 //! Handles management of the song fingerprints
 
+use std::ffi::OsString;
+
 use crate::Args;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
@@ -42,6 +44,7 @@ impl DatabaseConfig {
 			count_bucket: bucket_count,
 			width_target_zone: target_zone_size_width,
 			target_zone_height: target_zone_size_height,
+			..
 		}: Args,
 	) -> Self {
 		Self {
@@ -56,16 +59,22 @@ impl DatabaseConfig {
 
 #[derive(Default, Debug)]
 pub struct DatabaseBuilder {
-	pub songs_path: Vec<String>,
+	pub songs_path: Vec<OsString>,
+	pub songs_data: Vec<Vec<u8>>,
 }
 impl DatabaseBuilder {
-	pub fn add_song(&mut self, file_path: &str) {
-		self.songs_path.push(file_path.into());
+	pub fn add_song<T: Into<OsString> + Copy + std::fmt::Debug>(
+		&mut self,
+		file_path: T,
+	) -> Result<(), std::io::Error> {
+		self.songs_data.push(std::fs::read(file_path.into())?);
+		self.songs_path.push(file_path.clone().into());
+		Ok(())
 	}
 	pub fn build(&self, config: DatabaseConfig) -> Database {
 		let mut db = Database::new(config);
-		let song_signatures = |path| -> Vec<(Signature, TimeStamp)> {
-			let song = encoder::Song::from_wav(path).unwrap();
+		let song_signatures = |byte_array| -> Vec<(Signature, TimeStamp)> {
+			let song = encoder::Song::from_wav(byte_array);
 			let signatures = config.signatures(&song);
 			// TODO: set an estimated initial capacity
 			let mut res = Vec::new();
@@ -80,7 +89,7 @@ impl DatabaseBuilder {
 		let data: Vec<Vec<(Signature, TimeStamp)>> = self
 			.songs_path
 			.par_iter()
-			.map(|path| song_signatures(path))
+			.map(|path| song_signatures(std::fs::read(path).unwrap()))
 			.collect();
 		for (song_id, data) in data.iter().enumerate() {
 			data.iter().copied().for_each(|(signature, timestamp)| {

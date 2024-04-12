@@ -17,8 +17,7 @@ pub struct Song {
 	pub samples: Vec<f32>,
 }
 impl Song {
-	pub fn from_wav(file_path: &String) -> Option<Song> {
-		let byte_array = std::fs::read(file_path).ok()?;
+	pub fn from_wav(byte_array: Vec<u8>) -> Song {
 		let channel_count = u16::from_le_bytes([byte_array[22], byte_array[23]]);
 		assert_eq!(channel_count, 1, "Only mono channel files are supported!");
 		let sample_rate = u16::from_le_bytes([byte_array[24], byte_array[25]]) as usize;
@@ -30,10 +29,10 @@ impl Song {
 				samples.push(word_data as f32);
 			}
 		}
-		Some(Song {
+		Song {
 			sample_rate,
 			samples,
-		})
+		}
 	}
 	#[allow(unused)]
 	pub fn length(&self) -> std::time::Duration {

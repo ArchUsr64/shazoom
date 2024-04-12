@@ -10,7 +10,7 @@ mod encoder;
 
 use crate::encoder::{Freq, TimeStamp};
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 pub struct Args {
 	#[arg(short, long, default_value_t = 260)]
 	pub ms_timeslice_size: u64,
@@ -24,29 +24,36 @@ pub struct Args {
 	pub width_target_zone: TimeStamp,
 	#[arg(short, long, default_value_t = 900)]
 	pub target_zone_height: Freq,
+	#[arg(long, default_value_t = String::from("songs"))]
+	pub songs_dir: String,
 }
 
 fn main() {
 	env_logger::init();
-	let start = std::time::Instant::now();
-	let db_config = database::DatabaseConfig::from_args(Args::parse());
+	let args = Args::parse();
+	let db_config = database::DatabaseConfig::from_args(args.clone());
 	debug!("{db_config:?}");
 	let mut db_builder = database::DatabaseBuilder::default();
 
-	#[rustfmt::skip]
-{
-	db_builder.add_song("songs/Charlie Puth - Attention [Official Video] [nfs8NYg7yQM].webm.wav");
-	db_builder.add_song("songs/Sia - Cheap Thrills (Official Lyric Video) ft. Sean Paul [nYh-n7EOtMA].webm.wav");
-	db_builder.add_song("songs/The Chainsmokers - Closer (Lyric) ft. Halsey [PT2_F-1esPk].webm.wav");
-	db_builder.add_song("songs/Alan Walker - Faded [60ItHLz5WEA].webm.wav");
-	db_builder.add_song("songs/Coldplay - Hymn For The Weekend (Official Video) [YykjpeuMNEk].webm.wav");
-	db_builder.add_song("songs/Dua Lipa - New Rules (Official Music Video) [k2qgadSvNyU].webm.wav");
-	db_builder.add_song("songs/Eminem - Not Afraid [j5-yKhDd64s].webm.wav");
-	db_builder.add_song("songs/The Weeknd - Starboy ft. Daft Punk (Official Video) [34Na4j8AVgA].webm.wav");
-	db_builder.add_song("songs/DJ Snake - Taki Taki ft. Selena Gomez, Ozuna, Cardi B (Official Music Video) [ixkoVwKQaJg].webm.wav");
-	db_builder.add_song("songs/Pitbull - Timber (Official Video) ft. Ke$ha [hHUbLv4ThOo].webm.wav");
-}
+	let entries = match std::fs::read_dir(&args.songs_dir) {
+		Ok(x) => x,
+		Err(err) => {
+			error!("Failed to read songs directory {:?}", args.songs_dir);
+			panic!("{err:?}")
+		}
+	};
+	for dir_entry in entries {
+		match dir_entry {
+			Ok(file) => {
+				if let Err(err) = db_builder.add_song(&file.path()) {
+					error!("Failed to add {file:?} to the database, {err:?}");
+				}
+			}
+			Err(err) => error!("{err}"),
+		}
+	}
 
+	let start = std::time::Instant::now();
 	let db = db_builder.build(db_config);
 	info!("DB Build Took {:?}", start.elapsed());
 
@@ -56,18 +63,25 @@ fn main() {
 		std::io::stdout().flush().unwrap();
 		std::io::stdin().read_line(&mut input_sample_path).unwrap();
 		let start = std::time::Instant::now();
-		if let Some(sample) = encoder::Song::from_wav(&input_sample_path.trim().to_string()) {
-			let mut matches = db.match_sample(sample);
-			info!("Match Count: {}, in {:?}", matches.len(), start.elapsed());
-			matches.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-			for res in &matches[..3.min(matches.len())] {
-				info!(
-					"Song: {}, Score: {:.2}",
-					db_builder.songs_path[res.id as usize], res.score
-				)
+		match std::fs::read(input_sample_path.trim()) {
+			Ok(byte_array) => {
+				let sample = encoder::Song::from_wav(byte_array);
+				let mut matches = db.match_sample(sample);
+				info!("Match Count: {}, in {:?}", matches.len(), start.elapsed());
+				matches.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+				if let Some(best_match) = matches.first() {
+					info!(
+						"Best Match: {:?}, Score: {:.2}",
+						db_builder.songs_path[best_match.id as usize], best_match.score
+					);
+					for (i, m) in matches.iter().enumerate() {
+						debug!("{i}: Match: {m:?}");
+					}
+				}
 			}
-		} else {
-			error!("Invalid file name, try again");
+			Err(err) => {
+				error!("Try again, {err:?}");
+			}
 		}
 	}
 }
