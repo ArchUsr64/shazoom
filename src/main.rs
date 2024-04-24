@@ -52,8 +52,8 @@ fn main() {
 				debug!("Skipping {x:?}");
 			}
 			Ok(file) => match db_builder.add_song(&file.file_name()) {
-				Ok(cache) => info!("{cache:?} for {file:?}"),
-				Err(err) => error!("Failed to add {file:?} to the database, {err:?}"),
+				Some(cache) => info!("{cache:?} for {file:?}"),
+				None => error!("Failed to add {file:?} to the database"),
 			},
 			Err(err) => error!("{err}"),
 		}

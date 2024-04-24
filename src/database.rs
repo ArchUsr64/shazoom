@@ -71,14 +71,14 @@ impl DatabaseConfig {
 
 #[derive(Debug, Hash)]
 pub struct SongEntry {
-	pub path: OsString,
-	pub data: Vec<u8>,
+	pub name: OsString,
+	pub path: PathBuf,
 }
 impl SongEntry {
 	fn cached_file_name(&self) -> OsString {
 		let mut hasher = DefaultHasher::new();
 		self.hash(&mut hasher);
-		format!("{}-{:016x}.json", self.path.display(), hasher.finish()).into()
+		format!("{}-{:016x}.json", self.name.display(), hasher.finish()).into()
 	}
 }
 
@@ -165,12 +165,15 @@ impl DatabaseBuilder {
 	pub fn add_song<T: Into<OsString> + Copy + std::fmt::Debug>(
 		&mut self,
 		file_path: T,
-	) -> Result<CacheStatus, std::io::Error> {
+	) -> Option<CacheStatus> {
 		let mut path = self.songs_dir.clone();
 		path.push(file_path.into());
+		if !path.clone().exists() {
+			return None;
+		}
 		let entry = SongEntry {
-			path: file_path.clone().into(),
-			data: std::fs::read(path)?,
+			name: file_path.clone().into(),
+			path,
 		};
 		if let Some(mut cached_file) = self.cache_dir.clone() {
 			cached_file.push(entry.cached_file_name());
@@ -179,7 +182,7 @@ impl DatabaseBuilder {
 					Ok(x) => {
 						self.data
 							.push(BuilderEntry::CachedData(file_path.into(), x));
-						return Ok(CacheStatus::Hit);
+						return Some(CacheStatus::Hit);
 					}
 					Err(err) => {
 						warn!("Failed to deserialize cache file for {file_path:?}, {err:?}")
@@ -189,7 +192,7 @@ impl DatabaseBuilder {
 			}
 		}
 		self.data.push(BuilderEntry::Entry(entry));
-		Ok(CacheStatus::Miss)
+		Some(CacheStatus::Miss)
 	}
 	pub fn build(self, config: DatabaseConfig) -> Database {
 		let mut db = Database::new(config);
@@ -217,13 +220,13 @@ impl DatabaseBuilder {
 				// TODO: cloning big chunks of data
 				BuilderEntry::CachedData(path, data) => (path.clone(), data.clone()),
 				BuilderEntry::Entry(entry) => {
-					let data = song_signatures(entry.data.clone());
+					let data = song_signatures(std::fs::read(&entry.path).unwrap());
 					if let Some(mut path) = self.cache_dir.clone() {
 						path.push(&entry.cached_file_name());
 						std::fs::write(&path, serde_json::to_string(&data).unwrap()).unwrap();
 						info!("Wrote data for {path:?} to Cache");
 					}
-					(entry.path.clone(), data)
+					(entry.name.clone(), data)
 				}
 			})
 			.collect();
