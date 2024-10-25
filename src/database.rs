@@ -26,7 +26,7 @@ pub struct DatabaseConfig {
 	target_zone_size: (TimeStamp, Freq),
 }
 impl DatabaseConfig {
-	fn cached_dir_name(&self) -> OsString {
+	pub fn cached_dir_name(&self) -> OsString {
 		let mut hasher = DefaultHasher::new();
 		self.hash(&mut hasher);
 		format!("{:016x}", hasher.finish()).into()

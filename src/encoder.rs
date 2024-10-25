@@ -18,6 +18,44 @@ pub struct Song {
 	pub samples: Vec<f32>,
 }
 impl Song {
+	/* TODO: `offset` should be `std::time::Duration` and should be specified for each song
+		^ same for `duration`
+	*/
+	pub fn mix(a: &Song, b: &Song, snr: f32, offset: usize, duration: usize) -> Song {
+		assert_eq!(
+			a.sample_rate, b.sample_rate,
+			"Mixing samples of unequal sample rate"
+		);
+		// Take duration of 15 seconds
+		Song {
+			sample_rate: a.sample_rate,
+			samples: a
+				.samples
+				.iter()
+				.skip(offset * a.sample_rate)
+				.take(duration * a.sample_rate)
+				.zip(b.samples.iter())
+				.map(|(a_sample, b_sample)| a_sample * snr + (1. - snr) * b_sample)
+				.collect(),
+		}
+	}
+	pub fn to_wav(song: Song) -> Vec<u8> {
+		let mut byte_array: Vec<u8> = Vec::with_capacity(song.samples.len() * 2);
+		[
+			0x52, 0x49, 0x46, 0x46, 0x1c, 0x30, 0x14, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d,
+			0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x44, 0xac, 0x00, 0x00,
+			0x88, 0x58, 0x01, 0x00, 0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0xf8, 0x2f,
+			0x14, 0x00u8,
+		]
+		.into_iter()
+		.for_each(|t| byte_array.push(t));
+		song.samples.iter().for_each(|i| {
+			let [a, b] = (*i as i16).to_le_bytes();
+			byte_array.push(a);
+			byte_array.push(b);
+		});
+		byte_array
+	}
 	pub fn from_wav(byte_array: Vec<u8>) -> Song {
 		let channel_count = u16::from_le_bytes([byte_array[22], byte_array[23]]);
 		assert_eq!(channel_count, 1, "Only mono channel files are supported!");

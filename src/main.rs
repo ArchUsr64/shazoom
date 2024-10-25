@@ -7,6 +7,7 @@ use log::{debug, error, info};
 
 mod database;
 mod encoder;
+mod testing;
 
 use crate::encoder::{Freq, TimeStamp};
 
@@ -24,17 +25,19 @@ pub struct Args {
 	pub width_target_zone: TimeStamp,
 	#[arg(short, long, default_value_t = 900)]
 	pub target_zone_height: Freq,
-	#[arg(long, default_value_t = String::from("songs"))]
+	#[arg(long, default_value_t = String::from("test"))]
 	pub songs_dir: String,
 	#[arg(long, default_value_t = String::from("cache"))]
 	pub cache_dir: String,
 }
 
 fn main() {
+	// testing::test();
+	// std::process::exit(0);
 	env_logger::init();
 	let args = Args::parse();
 	let db_config = database::DatabaseConfig::from_args(args.clone());
-	debug!("{db_config:?}");
+	debug!("{db_config:?} at {:?}", db_config.cached_dir_name());
 	let mut db_builder =
 		database::DatabaseBuilder::new(db_config, &args.songs_dir, Some(&args.cache_dir));
 
@@ -63,32 +66,53 @@ fn main() {
 	let db = db_builder.build(db_config);
 	info!("DB Build Took {:?}", start.elapsed());
 
-	loop {
-		let mut input_sample_path = String::new();
-		print!("Enter file path: ");
-		std::io::stdout().flush().unwrap();
-		std::io::stdin().read_line(&mut input_sample_path).unwrap();
-		let start = std::time::Instant::now();
-		match std::fs::read(input_sample_path.trim()) {
-			Ok(byte_array) => {
-				let sample = encoder::Song::from_wav(byte_array);
-				let mut matches = db.match_sample(sample);
-				info!("Match Count: {}, in {:?}", matches.len(), start.elapsed());
-				matches.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-				if let Some(best_match) = matches.first() {
-					info!(
-						"Best Match: {:?}, Score: {:.2}",
-						db.song_name(best_match.id),
-						best_match.score
-					);
-					for (i, m) in matches.iter().enumerate() {
-						debug!("{i}: Match: {m:?}");
+	for snr in testing::snrs.iter().rev() {
+		let mut accuracies = Vec::new();
+		for offset in testing::offsets {
+			let mut input_sample_path = format!("test/{}/{}.wav", snr, offset);
+			// print!("Enter file path: ");
+			// std::io::stdout().flush().unwrap();
+			// std::io::stdin().read_line(&mut input_sample_path).unwrap();
+			let start = std::time::Instant::now();
+			match std::fs::read(input_sample_path.trim()) {
+				Ok(byte_array) => {
+					let sample = encoder::Song::from_wav(byte_array);
+					let mut matches = db.match_sample(sample);
+					matches.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+					if let Some(best_match) = matches.first() {
+						let mut total_score = 0.;
+						println!(
+							"Match for {input_sample_path}, is {}",
+							db.song_name(best_match.id)
+						);
+						if best_match.id != 0 {
+							error!("Match failed!");
+							accuracies.push(0.);
+							continue;
+						}
+						info!(
+							"Best Match: {:?}, Score: {:.2}",
+							db.song_name(best_match.id),
+							best_match.score
+						);
+						for (i, m) in matches.iter().enumerate() {
+							debug!("{i}: Match: {m:?}");
+							total_score += m.score;
+						}
+						accuracies.push(best_match.score / total_score);
 					}
+					info!("Match Count: {}, in {:?}", matches.len(), start.elapsed());
+				}
+				Err(err) => {
+					error!("Try again, {err:?}");
 				}
 			}
-			Err(err) => {
-				error!("Try again, {err:?}");
-			}
 		}
+		let mut acc = 0.;
+		for a in accuracies.iter() {
+			acc += a;
+		}
+		acc /= 12.;
+		info!("For SNR: {snr}%, Accuracy: {acc}, Raw: {accuracies:?}")
 	}
 }
