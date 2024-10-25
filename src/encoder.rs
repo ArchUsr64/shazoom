@@ -23,7 +23,7 @@ impl Song {
 		assert_eq!(channel_count, 1, "Only mono channel files are supported!");
 		let sample_rate = u16::from_le_bytes([byte_array[24], byte_array[25]]) as usize;
 		let mut samples = Vec::with_capacity(byte_array.len() / 2);
-		let mut byte_iter = byte_array.iter();
+		let mut byte_iter = byte_array.iter().skip(44);
 		while let Some(&lsb) = byte_iter.next() {
 			if let Some(&msb) = byte_iter.next() {
 				let word_data = i16::from_le_bytes([lsb, msb]);
