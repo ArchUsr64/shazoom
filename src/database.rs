@@ -246,7 +246,7 @@ impl DatabaseBuilder {
 pub struct Match {
 	pub id: SongId,
 	pub score: f32,
-	pub offset: Offset,
+	pub offset: f32,
 	pub freq: usize,
 	pub n: usize,
 }
@@ -308,7 +308,7 @@ impl Database {
 				let average = sum as f32 / n as f32;
 				Match {
 					id: song_id,
-					offset: best_offset,
+					offset: best_offset as f32 * self.config.slice_size.as_secs_f32(),
 					freq: max_freq,
 					score: max_freq as f32 / average,
 					n,
